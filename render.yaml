@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: music
-    env: java
-    buildCommand: javac New.java
-    startCommand: java New
-    envVars:
-      - key: DB_URL
-        value: "jdbc:postgresql://musedb_ue1o_user:pxHw8qDZSXZA2Rxi8lrxOtuzOnrPYBUq@dpg-d21jko7gi27c73e0jqog-a.singapore-postgres.render.com:5432/musedb_ue1o?ssl=true&sslmode=require"
