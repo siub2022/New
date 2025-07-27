@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: music202
+    env: java
+    buildCommand: javac New.java
+    startCommand: java New
+    envVars:
+      - key: DB_URL
+        value: "jdbc:postgresql://dpg-d21jko7gi27c73e0jqog-a.singapore-postgres.render.com:5432/musedb_ue1o?ssl=true&sslmode=require"
+      - key: DB_USER
+        value: "musedb_ue1o_user"
+      - key: DB_PASSWORD 
+        value: "pxHw8qDZSXZA2Rxi8lrxOtuzOnrPYBUq"
+      - key: PORT
+        value: "8080"
