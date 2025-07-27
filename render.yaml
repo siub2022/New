@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: music
+    env: java  # Explicitly sets Java runtime
+    buildCommand: javac New.java
+    startCommand: java New
