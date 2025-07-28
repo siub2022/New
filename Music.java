@@ -3,58 +3,55 @@ import java.io.*;
 import java.net.*;
 import java.sql.*;
 
-public class Music {  // Changed from MusicApp to match filename
+public class Music {
     static {
         try {
             Class.forName("org.postgresql.Driver");
-            System.out.println("[DB] PostgreSQL driver registered");
-        } catch (ClassNotFoundException e) {
-            System.err.println("[DB] FATAL: Driver not found!");
+            DriverManager.registerDriver(new org.postgresql.Driver());
+            System.out.println("[DB] Driver double-registered successfully");
+        } catch (Exception e) {
+            System.err.println("[DB] FATAL: Driver initialization failed!");
+            e.printStackTrace();
             System.exit(1);
         }
     }
 
     public static void main(String[] args) throws Exception {
-        int port = Integer.parseInt(System.getenv("PORT"));
         String dbUrl = System.getenv("DB_URL");
+        int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "10000"));
         
-        System.out.println("[APP] Starting on port: " + port);
-        System.out.println("[DB] Using URL: " + dbUrl.replaceFirst(":.*@", ":*****@"));
-
-        // Test database connection immediately
-        try (Connection conn = DriverManager.getConnection(dbUrl)) {
-            System.out.println("[DB] Connection test successful");
+        // Test database connection first
+        try (Connection testConn = DriverManager.getConnection(dbUrl);
+             Statement testStmt = testConn.createStatement();
+             ResultSet rs = testStmt.executeQuery("SELECT title, singer, youtubelink FROM songs LIMIT 1")) {
+            System.out.println("[DB] Connection and query test successful");
         } catch (SQLException e) {
-            System.err.println("[DB] Connection failed: " + e.getMessage());
+            System.err.println("[DB] Connection test failed:");
+            e.printStackTrace();
             System.exit(1);
         }
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         
-        // Required endpoints
         server.createContext("/", exchange -> {
-            String response = "Music App\nEndpoints:\n- /health\n- /songs";
+            String response = "Music2025 API\nEndpoints:\n- /songs\n- /health";
             exchange.sendResponseHeaders(200, response.length());
             exchange.getResponseBody().write(response.getBytes());
-            exchange.close();
-        });
-        
-        server.createContext("/health", exchange -> {
-            exchange.sendResponseHeaders(200, 2);
-            exchange.getResponseBody().write("OK".getBytes());
             exchange.close();
         });
         
         server.createContext("/songs", exchange -> {
             try (Connection conn = DriverManager.getConnection(dbUrl);
                  Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT title, artist FROM songs")) {
+                 ResultSet rs = stmt.executeQuery("SELECT title, singer, youtubelink FROM songs")) {
                 
                 StringBuilder response = new StringBuilder();
                 while (rs.next()) {
                     response.append(rs.getString("title"))
-                           .append(" | ")  // Better formatting
-                           .append(rs.getString("artist"))
+                           .append("|")
+                           .append(rs.getString("singer"))
+                           .append("|")
+                           .append(rs.getString("youtubelink"))
                            .append("\n");
                 }
                 
@@ -65,12 +62,20 @@ public class Music {  // Changed from MusicApp to match filename
                 String error = "Error: " + e.getMessage();
                 exchange.sendResponseHeaders(500, error.length());
                 exchange.getResponseBody().write(error.getBytes());
+                System.err.println("[ERROR] " + e.getMessage());
             } finally {
                 exchange.close();
             }
         });
 
+        server.createContext("/health", exchange -> {
+            String response = "OK";
+            exchange.sendResponseHeaders(200, response.length());
+            exchange.getResponseBody().write(response.getBytes());
+            exchange.close();
+        });
+
         server.start();
-        System.out.println("[APP] Server ready on port " + port);
+        System.out.println("[APP] Server running on port " + port);
     }
 }
