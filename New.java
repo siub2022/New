@@ -4,42 +4,31 @@ import java.net.*;
 import java.sql.*;
 
 public class New {
-    // Hardcoded database configuration (for temporary testing)
-    private static final String DB_URL = "jdbc:postgresql://dpg-d21jko7gi27c73e0jqog-a.singapore-postgres.render.com:5432/musedb_ue1o?ssl=true&sslmode=require";
-    private static final String DB_USER = "musedb_ue1o_user";
-    private static final String DB_PASSWORD = "pxHw8qDZSXZA2Rxi8lrxOtuzOnrPYBUq";
-    int port = Integer.parseInt(System.getenv("PORT"));  // Strict Render compliance
+    private static final String DB_URL = System.getenv("DB_URL");
 
     public static void main(String[] args) throws Exception {
-             
-        
-        // Create HTTP server
-        HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
-        
-        // Single endpoint that shows all songs immediately
+        // 1. Get port from Render (required)
+        int port = Integer.parseInt(System.getenv("PORT"));
+        System.out.println("[SERVER] Starting on port " + port);
+
+        // 2. Create server
+        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+
+        // 3. Setup endpoints
         server.createContext("/", exchange -> {
-            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT title, singer, youtubelink FROM songs")) {
-                
-                // Build plain text response
-                StringBuilder response = new StringBuilder("All Songs:\n\n");
-                while (rs.next()) {
-                    response.append("• ")
-                           .append(rs.getString("title"))
-                           .append(" by ")
-                           .append(rs.getString("singer"))
-                           .append(" | ")
-                           .append(rs.getString("youtubelink"))
-                           .append("\n");
-                }
-                
-                exchange.getResponseHeaders().set("Content-Type", "text/plain");
+            String response = "Music22 Server - Use /songs endpoint";
+            exchange.sendResponseHeaders(200, response.length());
+            exchange.getResponseBody().write(response.getBytes());
+            exchange.close();
+        });
+
+        server.createContext("/songs", exchange -> {
+            try {
+                String response = getSongs();
                 exchange.sendResponseHeaders(200, response.length());
-                exchange.getResponseBody().write(response.toString().getBytes());
-                
+                exchange.getResponseBody().write(response.getBytes());
             } catch (Exception e) {
-                String error = "Database Error: " + e.getMessage();
+                String error = "Error: " + e.getMessage();
                 exchange.sendResponseHeaders(500, error.length());
                 exchange.getResponseBody().write(error.getBytes());
             } finally {
@@ -47,8 +36,24 @@ public class New {
             }
         });
 
+        // 4. Start server
         server.start();
-        System.out.println("Server running with HARDCODED configuration");
-        System.out.println("Access songs at: http://localhost:" + PORT + "/");
+        System.out.println("[SERVER] Ready at http://localhost:" + port);
+    }
+
+    private static String getSongs() throws SQLException {
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT title, singer, youtubelink FROM songs")) {
+
+            StringBuilder sb = new StringBuilder();
+            while (rs.next()) {
+                sb.append(String.format("%s|%s|%s\n",
+                    rs.getString("title"),
+                    rs.getString("singer"),
+                    rs.getString("youtubelink")));
+            }
+            return sb.toString();
+        }
     }
 }
