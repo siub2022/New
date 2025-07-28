@@ -2,80 +2,105 @@ import com.sun.net.httpserver.*;
 import java.io.*;
 import java.net.*;
 import java.sql.*;
+import java.nio.charset.StandardCharsets;
 
 public class Music {
+    // 配置参数
+    private static final int PORT = 8080;
+    private static final String DB_URL = "jdbc:postgresql://dpg-d23sgh3e5dus73b245mg-a.singapore-postgres.render.com/db2025"
+            + "?user=db2025_user"
+            + "&password=9ok43BSy483OGvPCzpRLa5VnjnnFS4lv"
+            + "&ssl=true"
+            + "&sslmode=require"
+            + "&characterEncoding=UTF-8"; // 添加UTF-8支持中文
+
     static {
         try {
             Class.forName("org.postgresql.Driver");
-            DriverManager.registerDriver(new org.postgresql.Driver());
-            System.out.println("[DB] Driver double-registered successfully");
-        } catch (Exception e) {
-            System.err.println("[DB] FATAL: Driver initialization failed!");
-            e.printStackTrace();
+            System.out.println("[数据库] 驱动程序加载成功");
+        } catch (ClassNotFoundException e) {
+            System.err.println("[错误] 找不到PostgreSQL驱动！");
+            System.err.println("请确认postgresql-42.7.3.jar在项目目录中");
             System.exit(1);
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        String dbUrl = System.getenv("DB_URL");
-        int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "10000"));
+    public static void main(String[] args) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
         
-        // Test database connection first
-        try (Connection testConn = DriverManager.getConnection(dbUrl);
-             Statement testStmt = testConn.createStatement();
-             ResultSet rs = testStmt.executeQuery("SELECT title, singer, youtubelink FROM songs LIMIT 1")) {
-            System.out.println("[DB] Connection and query test successful");
-        } catch (SQLException e) {
-            System.err.println("[DB] Connection test failed:");
-            e.printStackTrace();
-            System.exit(1);
-        }
-
-        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
-        
+        // 主页面
         server.createContext("/", exchange -> {
-            String response = "Music2025 API\nEndpoints:\n- /songs\n- /health";
-            exchange.sendResponseHeaders(200, response.length());
-            exchange.getResponseBody().write(response.getBytes());
-            exchange.close();
-        });
-        
-        server.createContext("/songs", exchange -> {
-            try (Connection conn = DriverManager.getConnection(dbUrl);
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT title, singer, youtubelink FROM songs")) {
-                
-                StringBuilder response = new StringBuilder();
-                while (rs.next()) {
-                    response.append(rs.getString("title"))
-                           .append("|")
-                           .append(rs.getString("singer"))
-                           .append("|")
-                           .append(rs.getString("youtubelink"))
-                           .append("\n");
+            try {
+                String singerParam = exchange.getRequestURI().getQuery();
+                String sql = singerParam != null && singerParam.startsWith("singer=") 
+                    ? "SELECT singer, title, youtubelink FROM songs WHERE singer LIKE ? ORDER BY title"
+                    : "SELECT singer, title, youtubelink FROM songs ORDER BY singer, title";
+
+                try (Connection conn = DriverManager.getConnection(DB_URL);
+                     PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    
+                    if (singerParam != null && singerParam.startsWith("singer=")) {
+                        stmt.setString(1, "%" + URLDecoder.decode(singerParam.substring(7), "UTF-8") + "%");
+                    }
+
+                    StringBuilder html = new StringBuilder("""
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="UTF-8">
+                            <title>音乐数据库</title>
+                            <style>
+                                body { font-family: 'Microsoft YaHei', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+                                .song { background: #fff; padding: 15px; margin-bottom: 10px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                                h1 { color: #e74c3c; }
+                                .youtube { color: #ff0000; text-decoration: none; font-weight: bold; }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>🎵 我的音乐库</h1>
+                            <form action="/">
+                                <input type="text" name="singer" placeholder="搜索歌手...">
+                                <button type="submit">搜索</button>
+                                <a href="/">显示全部</a>
+                            </form>
+                        """);
+
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            html.append(String.format(
+                                "<div class='song'><b>%s</b><br>%s<br><a class='youtube' href='%s' target='_blank'>▶ YouTube观看</a></div>",
+                                rs.getString("singer"),
+                                rs.getString("title"),
+                                rs.getString("youtubelink")
+                            ));
+                        }
+                    }
+
+                    html.append("</body></html>");
+                    sendResponse(exchange, 200, html.toString());
                 }
-                
-                exchange.getResponseHeaders().set("Content-Type", "text/plain");
-                exchange.sendResponseHeaders(200, response.length());
-                exchange.getResponseBody().write(response.toString().getBytes());
             } catch (Exception e) {
-                String error = "Error: " + e.getMessage();
-                exchange.sendResponseHeaders(500, error.length());
-                exchange.getResponseBody().write(error.getBytes());
-                System.err.println("[ERROR] " + e.getMessage());
+                sendError(exchange, 500, "服务器错误: " + e.getMessage());
             } finally {
                 exchange.close();
             }
         });
 
-        server.createContext("/health", exchange -> {
-            String response = "OK";
-            exchange.sendResponseHeaders(200, response.length());
-            exchange.getResponseBody().write(response.getBytes());
-            exchange.close();
-        });
-
         server.start();
-        System.out.println("[APP] Server running on port " + port);
+        System.out.printf("[系统] 服务已启动: http://localhost:%d%n", PORT);
+    }
+
+    private static void sendResponse(HttpExchange exchange, int code, String content) throws IOException {
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+        exchange.sendResponseHeaders(code, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+
+    private static void sendError(HttpExchange exchange, int code, String message) throws IOException {
+        String errorPage = "<html><body><h1>错误</h1><p>" + message + "</p></body></html>";
+        sendResponse(exchange, code, errorPage);
     }
 }
