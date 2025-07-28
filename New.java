@@ -8,7 +8,7 @@ public class New {
     private static final String DB_URL = "jdbc:postgresql://dpg-d21jko7gi27c73e0jqog-a.singapore-postgres.render.com:5432/musedb_ue1o?ssl=true&sslmode=require";
     private static final String DB_USER = "musedb_ue1o_user";
     private static final String DB_PASSWORD = "pxHw8qDZSXZA2Rxi8lrxOtuzOnrPYBUq";
-    private static final int PORT = 8080;
+    int port = Integer.parseInt(System.getenv("PORT"));  // Strict Render compliance
 
     public static void main(String[] args) throws Exception {
              
