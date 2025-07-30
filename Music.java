@@ -4,31 +4,53 @@ import java.net.*;
 import java.sql.*;
 import java.nio.charset.StandardCharsets;
 
-public class Music {
-    // 配置参数
+public class Music  {
+    // ==================== SAFETY NETS ====================
+    // Layer 1: Hardcoded DEFAULTS (for local testing ONLY)
     private static final int PORT = 8080;
-    private static final String DB_URL = "jdbc:postgresql://dpg-d23sgh3e5dus73b245mg-a.singapore-postgres.render.com/db2025"
-            + "?user=db2025_user"
-            + "&password=9ok43BSy483OGvPCzpRLa5VnjnnFS4lv"
-            + "&ssl=true"
-            + "&sslmode=require"
-            + "&characterEncoding=UTF-8"; // 添加UTF-8支持中文
+    private static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost/test_db";
+    private static final String DEFAULT_DB_USER = "test_user";
+    private static final String DEFAULT_DB_PASS = "test_pass";
+
+    // Layer 2: Environment Variables (Production)
+    private static String getDbUrl() {
+        String url = System.getenv("DB_URL");
+        return url != null ? url : DEFAULT_DB_URL;
+    }
+
+    private static String getDbUser() {
+        String user = System.getenv("DB_USER");
+        return user != null ? user : DEFAULT_DB_USER;
+    }
+
+    private static String getDbPassword() {
+        String pass = System.getenv("DB_PASSWORD");
+        return pass != null ? pass : DEFAULT_DB_PASS;
+    }
+
+    // Layer 3: Runtime Warnings
+    private static void checkSecurity() {
+        if (getDbUrl().equals(DEFAULT_DB_URL)) {
+            System.err.println("⚠️ 警告: 使用备用数据库! 请检查Render环境变量!");
+        }
+    }
+    // =====================================================
 
     static {
         try {
             Class.forName("org.postgresql.Driver");
             System.out.println("[数据库] 驱动程序加载成功");
         } catch (ClassNotFoundException e) {
-            System.err.println("[错误] 找不到PostgreSQL驱动！");
-            System.err.println("请确认postgresql-42.7.3.jar在项目目录中");
+            System.err.println("[错误] 找不到PostgreSQL驱动!");
             System.exit(1);
         }
     }
 
     public static void main(String[] args) throws IOException {
+        checkSecurity(); // Security check
+        
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
         
-        // 主页面
         server.createContext("/", exchange -> {
             try {
                 String singerParam = exchange.getRequestURI().getQuery();
@@ -36,7 +58,8 @@ public class Music {
                     ? "SELECT singer, title, youtubelink FROM songs WHERE singer LIKE ? ORDER BY title"
                     : "SELECT singer, title, youtubelink FROM songs ORDER BY singer, title";
 
-                try (Connection conn = DriverManager.getConnection(DB_URL);
+                try (Connection conn = DriverManager.getConnection(
+                        getDbUrl(), getDbUser(), getDbPassword());
                      PreparedStatement stmt = conn.prepareStatement(sql)) {
                     
                     if (singerParam != null && singerParam.startsWith("singer=")) {
